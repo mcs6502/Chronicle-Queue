@@ -19,10 +19,10 @@ repositories {
 }
 
 dependencies {
-    compile 'net.openhft:chronicle-core:2.17.10'
-    compile 'net.openhft:chronicle-bytes:2.17.20'
-    compile 'net.openhft:chronicle-wire:2.17.32'
-    compile 'net.openhft:chronicle-threads:2.17.2'
+    compile project(':chronicle-core')
+    compile project(':chronicle-bytes')
+    compile project(':chronicle-wire')
+    compile project(':chronicle-threads')
     compile 'net.openhft:affinity:3.1.11'
     compile 'commons-cli:commons-cli:1.4'
     compile 'org.slf4j:slf4j-api:1.7.25'
