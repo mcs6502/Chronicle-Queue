@@ -74,3 +74,12 @@ publishing {
 tasks.withType(JavaCompile) {
     options.encoding = 'UTF-8'
 }
+
+test {
+    maxHeapSize = '1024m'
+
+    def javaVendor = System.properties['java.vendor']
+    if (javaVendor.toLowerCase().contains('openj9')) {
+        jvmArgs '-XX:+CompactStrings' // required for StringUtils on OpenJ9
+    }
+}
