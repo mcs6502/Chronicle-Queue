@@ -10,7 +10,12 @@ import org.slf4j.LoggerFactory;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.util.Queue;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public enum StoreComponentReferenceHandler implements Closeable {
@@ -34,17 +39,30 @@ public enum StoreComponentReferenceHandler implements Closeable {
     private static final AtomicBoolean MAX_BATCH_WARNING_LOGGED = new AtomicBoolean(false);
 
     static {
-        THREAD_LOCAL_CLEANER_EXECUTOR_SERVICE.scheduleWithFixedDelay(() -> {
-
-            boolean workDone;
-            do {
-                workDone = processReferenceQueue(EXPIRED_THREAD_LOCAL_APPENDERS_QUEUE);
-                workDone |= processReferenceQueue(EXPIRED_THREAD_LOCAL_TAILERS_QUEUE);
-                workDone |= processWireQueue();
-            } while (workDone);
-        }, 0, 1, TimeUnit.SECONDS);
+        THREAD_LOCAL_CLEANER_EXECUTOR_SERVICE.scheduleWithFixedDelay(
+                StoreComponentReferenceHandler::run, 0, 1, TimeUnit.SECONDS);
 
         Runtime.getRuntime().addShutdownHook(new Thread(THREAD_LOCAL_CLEANER_EXECUTOR_SERVICE::shutdown));
+    }
+
+    /**
+     * Schedules the resource cleaner task to run on its thread. The resulting
+     * future will return {@code null} once the cleaner is finished.
+     *
+     * @return a future object representing the cleaner task
+     */
+    public static Future<?> runResourceCleaner() {
+        return THREAD_LOCAL_CLEANER_EXECUTOR_SERVICE.submit(
+                StoreComponentReferenceHandler::run);
+    }
+
+    private static void run() {
+        boolean workDone;
+        do {
+            workDone = processReferenceQueue(EXPIRED_THREAD_LOCAL_APPENDERS_QUEUE);
+            workDone |= processReferenceQueue(EXPIRED_THREAD_LOCAL_TAILERS_QUEUE);
+            workDone |= processWireQueue();
+        } while (workDone);
     }
 
     static ReferenceQueue<ExcerptAppender> appenderQueue() {

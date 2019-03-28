@@ -23,15 +23,20 @@ import net.openhft.chronicle.core.threads.ThreadDump;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import net.openhft.chronicle.queue.impl.single.StoreComponentReferenceHandler;
+import org.jetbrains.annotations.NotNull;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static net.openhft.chronicle.core.io.Closeable.closeQuietly;
 import static net.openhft.chronicle.queue.RollCycles.TEST_DAILY;
 import static org.junit.Assert.*;
 import static org.junit.Assume.assumeFalse;
@@ -42,6 +47,8 @@ import static org.junit.Assume.assumeFalse;
 public class ThreadedQueueTest {
 
     public static final int REQUIRED_COUNT = 10;
+    private static final long RESOURCE_CLEANER_TIMEOUT_MS = 5000;
+    private final List<ChronicleQueue> queues = new ArrayList<>();
     private ThreadDump threadDump;
 
     @Before
@@ -53,7 +60,21 @@ public class ThreadedQueueTest {
 
     @After
     public void checkThreadDump() {
+        closeQuietly(queues);
+        queues.clear();
+        runResourceCleaner();
+
         threadDump.assertNoNewThreads();
+        BytesUtil.checkRegisteredBytes();
+    }
+
+    private static void runResourceCleaner() {
+        Future<?> future = StoreComponentReferenceHandler.runResourceCleaner();
+        try {
+            future.get(RESOURCE_CLEANER_TIMEOUT_MS, MILLISECONDS);
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Test(timeout = 10000)
@@ -66,9 +87,7 @@ public class ThreadedQueueTest {
         ExecutorService tailerES = Executors.newSingleThreadExecutor(/*new NamedThreadFactory("tailer", true)*/);
         Future tf = tailerES.submit(() -> {
             try {
-                final ChronicleQueue rqueue = ChronicleQueue.singleBuilder(path)
-                        .testBlockSize()
-                        .build();
+                final ChronicleQueue rqueue = testQueue(path);
 
                 final ExcerptTailer tailer = rqueue.createTailer();
                 final Bytes bytes = Bytes.elasticByteBuffer();
@@ -88,9 +107,7 @@ public class ThreadedQueueTest {
         ExecutorService appenderES = Executors.newSingleThreadExecutor(/*new NamedThreadFactory("appender", true)*/);
         Future af = appenderES.submit(() -> {
             try {
-                final ChronicleQueue wqueue = ChronicleQueue.singleBuilder(path)
-                        .testBlockSize()
-                        .build();
+                final ChronicleQueue wqueue = testQueue(path);
 
                 final ExcerptAppender appender = wqueue.acquireAppender();
 
@@ -110,8 +127,8 @@ public class ThreadedQueueTest {
         tailerES.shutdown();
 
         long end = System.currentTimeMillis() + 9000;
-        af.get(9000, TimeUnit.MILLISECONDS);
-        tf.get(end - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
+        af.get(9000, MILLISECONDS);
+        tf.get(end - System.currentTimeMillis(), MILLISECONDS);
 
         assertEquals(REQUIRED_COUNT, counter.get());
     }
@@ -121,17 +138,11 @@ public class ThreadedQueueTest {
         assumeFalse(Jvm.isArm());
         final File path = DirectoryUtils.tempDir("testTailerReadingEmptyQueue");
 
-        final ChronicleQueue rqueue = SingleChronicleQueueBuilder.fieldlessBinary(path)
-                .testBlockSize()
-                .rollCycle(TEST_DAILY)
-                .build();
+        final ChronicleQueue rqueue = fieldlessBinary(path);
 
         final ExcerptTailer tailer = rqueue.createTailer();
 
-        final ChronicleQueue wqueue = SingleChronicleQueueBuilder.fieldlessBinary(path)
-                .testBlockSize()
-                .rollCycle(TEST_DAILY)
-                .build();
+        final ChronicleQueue wqueue = fieldlessBinary(path);
 
         Bytes bytes = Bytes.elasticByteBuffer();
         assertFalse(tailer.readBytes(bytes));
@@ -146,8 +157,22 @@ public class ThreadedQueueTest {
         bytes.release();
     }
 
-    @After
-    public void checkRegisteredBytes() {
-        BytesUtil.checkRegisteredBytes();
+    @NotNull
+    private ChronicleQueue fieldlessBinary(File path) {
+        SingleChronicleQueue queue = SingleChronicleQueueBuilder.fieldlessBinary(path)
+                .testBlockSize()
+                .rollCycle(TEST_DAILY)
+                .build();
+        queues.add(queue);
+        return queue;
+    }
+
+    @NotNull
+    private SingleChronicleQueue testQueue(File path) {
+        SingleChronicleQueue queue = ChronicleQueue.singleBuilder(path)
+                .testBlockSize()
+                .build();
+        queues.add(queue);
+        return queue;
     }
 }
