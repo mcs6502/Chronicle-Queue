@@ -26,13 +26,13 @@ public final class WriteBytesTest {
                 binary(tmpDir.newFolder()).testBlockSize().build()) {
             final ExcerptAppender appender = queue.acquireAppender();
 
-            final HeapBytesStore<ByteBuffer> store = HeapBytesStore.uninitialized();
-            store.init(ByteBuffer.wrap(PAYLOAD));
+            final HeapBytesStore<ByteBuffer> store =
+                    HeapBytesStore.wrap(ByteBuffer.wrap(PAYLOAD));
             appender.writeBytes(store);
 
             final ExcerptTailer tailer = queue.createTailer();
-            final HeapBytesStore<byte[]> copy = HeapBytesStore.uninitialized();
-            copy.init(new byte[4]);
+            final HeapBytesStore<byte[]> copy =
+                    HeapBytesStore.wrap(new byte[4]);
             tailer.readBytes(copy.bytesForWrite());
             assertTrue(Arrays.equals(PAYLOAD, copy.underlyingObject()));
         }
