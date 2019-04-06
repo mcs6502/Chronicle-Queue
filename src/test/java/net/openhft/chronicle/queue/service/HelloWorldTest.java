@@ -27,11 +27,15 @@ import org.junit.Test;
 import java.io.File;
 
 import static org.easymock.EasyMock.*;
+import static org.junit.Assert.assertTrue;
 
 /*
  * Created by Peter Lawrey on 23/04/16.
  */
 public class HelloWorldTest {
+
+    private static final long TIMEOUT = 10000;
+
     @Test
     public void testViaMock() {
         HelloReplier replier = createMock(HelloReplier.class);
@@ -70,8 +74,11 @@ public class HelloWorldTest {
             helloWorld.hello("June");
 
 //            System.out.println(helloWorldService.inputQueues()[0].dump());
+            long t0 = System.currentTimeMillis();
             for (int i = 0; i < 2; i++) {
                 while (!replyReader.readOne()) {
+                    long dt = System.currentTimeMillis() - t0;
+                    assertTrue("timed out waiting for messages", dt < TIMEOUT);
                     Thread.yield();
                 }
             }
